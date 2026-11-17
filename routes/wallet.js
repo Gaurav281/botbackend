@@ -6,7 +6,7 @@ const Transaction = require('../models/Transaction');
 const PromoCode = require('../models/PromoCode');
 const { authMiddleware } = require('../middleware/auth');
 
-const MIN_WITHDRAW_INR = 10;
+const MIN_WITHDRAW_INR = parseInt(process.env.MIN_WITHDRAWAL_INR || '5');
 const POINTS_PER_INR = 1000; // 1000 PTS = 1 INR
 
 // Helper: Convert UTC timestamp to IST Date string (YYYY-MM-DD)
@@ -98,7 +98,7 @@ router.get('/summary', authMiddleware, async (req, res) => {
         .limit(15)
         .lean(),
       Withdrawal.find({ userId: user._id })
-        .select('upiId pointsDeducted amountInr status rejectionReason createdAt')
+        .select('upiId pointsDeducted amountInr status transactionRef rejectionReason createdAt')
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
@@ -121,6 +121,27 @@ router.get('/summary', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Wallet summary error:', error);
     res.status(500).json({ success: false, message: 'Server error loading wallet' });
+  }
+});
+
+/**
+ * GET /api/wallet/payout-history - Get recent 10 withdrawals with full details
+ */
+router.get('/payout-history', authMiddleware, async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find({ userId: req.user._id })
+      .select('upiId pointsDeducted amountInr status transactionRef rejectionReason createdAt')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    res.json({
+      success: true,
+      withdrawals,
+    });
+  } catch (error) {
+    console.error('Payout history error:', error);
+    res.status(500).json({ success: false, message: 'Server error loading payout history' });
   }
 });
 

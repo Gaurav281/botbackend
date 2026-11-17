@@ -106,7 +106,12 @@ router.post('/withdrawals/:id/approve', async (req, res) => {
       });
     }
 
+    const finalTxnRef = (transactionRef && transactionRef.trim())
+      ? transactionRef.trim()
+      : `UPI/${Date.now().toString().slice(-8)}`;
+
     withdrawal.status = 'completed';
+    withdrawal.transactionRef = finalTxnRef;
     await withdrawal.save();
 
     await Transaction.create({
@@ -114,12 +119,20 @@ router.post('/withdrawals/:id/approve', async (req, res) => {
       type: 'withdrawal',
       amount: -withdrawal.amountInr,
       currency: 'INR',
-      description: `Withdrawal of ₹${withdrawal.amountInr} to UPI ${withdrawal.upiId} Approved! ${transactionRef ? `Ref: ${transactionRef}` : ''}`,
+      description: `Withdrawal of ₹${withdrawal.amountInr} to UPI ${withdrawal.upiId} Approved! Ref: ${finalTxnRef}`,
     });
+
+    // Broadcast official payout proof to @FireflyPayouts channel
+    try {
+      const { sendPayoutNotification } = require('../bot');
+      await sendPayoutNotification(withdrawal, withdrawal.userId, finalTxnRef);
+    } catch (botErr) {
+      console.warn('Failed to broadcast payout to channel:', botErr.message);
+    }
 
     res.json({
       success: true,
-      message: `Withdrawal request for ₹${withdrawal.amountInr} approved successfully.`,
+      message: `Withdrawal request for ₹${withdrawal.amountInr} approved successfully. Ref: ${finalTxnRef}`,
       withdrawal,
     });
   } catch (error) {

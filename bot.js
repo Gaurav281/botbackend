@@ -1,7 +1,9 @@
 const https = require('https');
+const Withdrawal = require('./models/Withdrawal');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '9254480058:AAEU91vAtIan_4Mjc5shbIDZoFv_wwmbo88';
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://fireflyplayv1.vercel.app';
+const PAYOUT_CHANNEL = process.env.PAYOUT_CHANNEL || '@FireflyPayouts';
 
 function callTelegramApi(method, data = {}) {
   return new Promise((resolve, reject) => {
@@ -56,6 +58,101 @@ async function configureMenuButton() {
 }
 
 /**
+ * Data Masking Helpers for Channel Privacy
+ */
+function maskUsername(username, firstName) {
+  if (username) {
+    const clean = username.replace('@', '').trim();
+    if (clean.length <= 3) return `@${clean[0]}*${clean.slice(-1)}`;
+    return `@${clean.slice(0, 2)}****${clean.slice(-2)}`;
+  }
+  if (firstName) {
+    const clean = firstName.trim();
+    if (clean.length <= 3) return `${clean[0]}*${clean.slice(-1)}`;
+    return `${clean.slice(0, 2)}****${clean.slice(-1)}`;
+  }
+  return 'Player';
+}
+
+function maskUpi(upi) {
+  if (!upi) return 'UPI';
+  const parts = upi.split('@');
+  if (parts.length < 2) return 'UPI';
+  const handle = parts[0];
+  const provider = parts[1];
+  const maskedHandle =
+    handle.length <= 4
+      ? `${handle[0]}****`
+      : `${handle.slice(0, 2)}****${handle.slice(-2)}`;
+  return `${maskedHandle}@${provider}`;
+}
+
+function maskTxnId(txnRef) {
+  if (!txnRef) return 'UPI/****9821';
+  const str = String(txnRef).trim();
+  if (str.length <= 6) return 'UPI/****';
+  return `${str.slice(0, 4)}****${str.slice(-3)}`;
+}
+
+/**
+ * Send official payout notification to @FireflyPayouts channel
+ */
+async function sendPayoutNotification(withdrawal, userDoc, transactionRef) {
+  try {
+    const shortRef = withdrawal._id.toString().slice(-4).toUpperCase();
+    const maskedUser = maskUsername(userDoc?.username, userDoc?.firstName);
+    const maskedUpiId = maskUpi(withdrawal.upiId);
+    const maskedTxn = maskTxnId(transactionRef || withdrawal.transactionRef);
+    const amountStr = Number(withdrawal.amountInr).toFixed(2);
+
+    const now = new Date();
+    const timeStr = now.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+
+    const messageText =
+      `⚡️ *Payout Sent #${shortRef}*\n\n` +
+      `👤 *User:* ${maskedUser}\n` +
+      `💰 *Amount:* ₹${amountStr}\n` +
+      `💳 *Payment Method:* UPI (${maskedUpiId})\n` +
+      `🧾 *Txn ID:* \`${maskedTxn}\`\n` +
+      `⏰ *Time:* ${timeStr} IST\n\n` +
+      `✅ *Verified Payout by Firefly Play*`;
+
+    const res = await callTelegramApi('sendMessage', {
+      chat_id: PAYOUT_CHANNEL,
+      text: messageText,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: '🔍 Verify',
+              url: `https://t.me/FireflyPlayBot?start=payout_${withdrawal._id}`,
+            },
+            {
+              text: '🚀 Open Firefly Play',
+              url: 'https://t.me/FireflyPlayBot/app',
+            },
+          ],
+        ],
+      },
+    });
+
+    console.log(`📢 Payout notification sent to ${PAYOUT_CHANNEL}:`, res.ok ? 'SUCCESS' : res);
+    return res;
+  } catch (err) {
+    console.error('Error sending payout notification to Telegram channel:', err);
+    return null;
+  }
+}
+
+/**
  * Long-polling loop to respond to /start and direct commands
  */
 let lastUpdateId = 0;
@@ -87,11 +184,67 @@ async function startBotPolling() {
           const username = msg.from?.username ? `@${msg.from.username}` : (msg.from?.first_name || 'Player');
 
           if (text.startsWith('/start')) {
-            // Check for referral parameter e.g. /start AST1234
             const parts = text.split(' ');
-            const refParam = parts.length > 1 ? parts[1] : '';
-            const appUrl = refParam
-              ? `${MINI_APP_URL}?startapp=${encodeURIComponent(refParam)}`
+            const param = parts.length > 1 ? parts[1].trim() : '';
+
+            // 1. Check if user clicked [Verify] from @FireflyPayouts channel
+            if (param.startsWith('payout_')) {
+              const withdrawalId = param.replace('payout_', '');
+              try {
+                const w = await Withdrawal.findById(withdrawalId).populate('userId');
+                if (w) {
+                  const shortId = w._id.toString().slice(-4).toUpperCase();
+                  const dateStr = (w.updatedAt || w.createdAt).toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Asia/Kolkata',
+                  });
+
+                  const receiptMsg =
+                    `🧾 *Official Firefly Payout Receipt*\n\n` +
+                    `🆔 *Payout Ref:* #${shortId}\n` +
+                    `💰 *Amount Paid:* ₹${w.amountInr.toFixed(2)}\n` +
+                    `👤 *Recipient:* ${w.userId?.firstName || w.userId?.username || 'Pilot'}\n` +
+                    `💳 *UPI ID:* \`${w.upiId}\`\n` +
+                    `🧾 *Complete Txn ID:* \`${w.transactionRef || 'Settled via Instant UPI'}\`\n` +
+                    `📅 *Processed At:* ${dateStr} IST\n` +
+                    `⚡️ *Status:* ✅ Transferred & Confirmed\n\n` +
+                    `_This withdrawal was approved and verified by the Firefly Play financial gateway._`;
+
+                  await callTelegramApi('sendMessage', {
+                    chat_id: chatId,
+                    text: receiptMsg,
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                      inline_keyboard: [
+                        [
+                          {
+                            text: '🎮 Play & Earn Now',
+                            web_app: { url: MINI_APP_URL },
+                          },
+                        ],
+                        [
+                          {
+                            text: '📢 Firefly Payout Proofs',
+                            url: 'https://t.me/FireflyPayouts',
+                          },
+                        ],
+                      ],
+                    },
+                  });
+                  continue;
+                }
+              } catch (lookupErr) {
+                console.warn('Error fetching withdrawal verification:', lookupErr.message);
+              }
+            }
+
+            // 2. Normal Welcome Message / Referral handler
+            const appUrl = param
+              ? `${MINI_APP_URL}?startapp=${encodeURIComponent(param)}`
               : MINI_APP_URL;
 
             const welcomeMessage =
@@ -103,6 +256,7 @@ async function startBotPolling() {
             await callTelegramApi('sendMessage', {
               chat_id: chatId,
               text: welcomeMessage,
+              parse_mode: 'Markdown',
               reply_markup: {
                 inline_keyboard: [
                   [
@@ -129,7 +283,7 @@ async function startBotPolling() {
                     {
                       text: '👥 Invite Friends',
                       url: `https://t.me/share/url?url=${encodeURIComponent(
-                        `https://t.me/FireflyPlayBot?start=${msg.from?.id || ''}`
+                        `https://t.me/FireflyPlayBot?start=ref_${msg.from?.id || ''}`
                       )}&text=${encodeURIComponent(
                         'Join Firefly Play! Blast enemies and earn real rewards!'
                       )}`,
@@ -184,4 +338,5 @@ module.exports = {
   stopBotPolling,
   callTelegramApi,
   checkChatMember,
+  sendPayoutNotification,
 };

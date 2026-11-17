@@ -21,8 +21,8 @@ router.get('/', authMiddleware, async (req, res) => {
       isActive: (f.totalKills || 0) >= 5,
     }));
 
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'AsteroidBlasterBot';
-    const inviteLink = `https://t.me/${botUsername}/app?startapp=ref_${user.referralCode}`;
+    const botUsername = process.env.BOT_USERNAME || process.env.TELEGRAM_BOT_USERNAME || 'FireflyPlayBot';
+    const inviteLink = `https://t.me/${botUsername}?start=ref_${user.referralCode}`;
 
     res.json({
       success: true,
