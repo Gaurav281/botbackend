@@ -34,9 +34,12 @@ const promoCodeSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
   },
   { timestamps: true }
 );
+
+promoCodeSchema.index({ isActive: 1, createdAt: -1 });
 
 module.exports = mongoose.model('PromoCode', promoCodeSchema);

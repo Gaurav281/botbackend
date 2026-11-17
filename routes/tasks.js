@@ -132,9 +132,15 @@ router.get('/', authMiddleware, async (req, res) => {
     const categoryStatus = { ...DEFAULT_CATEGORIES, ...(setting?.value || {}) };
     const enabledCategoryKeys = Object.keys(categoryStatus).filter((k) => categoryStatus[k]);
 
-    // Only fetch tasks from enabled categories
-    const tasks = await Task.find({ isActive: true, category: { $in: enabledCategoryKeys } }).lean();
-    const userTasks = await UserTask.find({ userId: user._id }).lean();
+    // Only fetch tasks from enabled categories with optimized field projection
+    const [tasks, userTasks] = await Promise.all([
+      Task.find({ isActive: true, category: { $in: enabledCategoryKeys } })
+        .select('title subtitle category reward actionType actionUrl targetAppId requiredLevel icon badge delaySeconds')
+        .lean(),
+      UserTask.find({ userId: user._id })
+        .select('taskId status startedAt completedAt')
+        .lean(),
+    ]);
 
     const taskStatusMap = {};
     for (const ut of userTasks) {

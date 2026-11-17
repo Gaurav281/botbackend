@@ -91,13 +91,18 @@ router.get('/summary', authMiddleware, async (req, res) => {
   try {
     const user = req.user;
 
-    const recentTransactions = await Transaction.find({ userId: user._id })
-      .sort({ createdAt: -1 })
-      .limit(15);
-
-    const withdrawals = await Withdrawal.find({ userId: user._id })
-      .sort({ createdAt: -1 })
-      .limit(10);
+    const [recentTransactions, withdrawals] = await Promise.all([
+      Transaction.find({ userId: user._id })
+        .select('type amount currency description createdAt')
+        .sort({ createdAt: -1 })
+        .limit(15)
+        .lean(),
+      Withdrawal.find({ userId: user._id })
+        .select('upiId pointsDeducted amountInr status rejectionReason createdAt')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
 
     const inrValueFromCoins = (user.coins / POINTS_PER_INR).toFixed(2);
     const totalValueInr = (parseFloat(inrValueFromCoins) + user.withdrawableBalance).toFixed(2);

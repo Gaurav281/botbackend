@@ -98,11 +98,16 @@ const userSchema = new mongoose.Schema(
     isAdmin: {
       type: Boolean,
       default: false,
+      index: true,
     },
   },
   {
     timestamps: true,
   }
 );
+
+userSchema.index({ username: 1 });
+userSchema.index({ createdAt: -1 });
+userSchema.index({ coins: -1 });
 
 module.exports = mongoose.model('User', userSchema);

@@ -56,11 +56,14 @@ const taskSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
   },
   {
     timestamps: true,
   }
 );
+
+taskSchema.index({ category: 1, isActive: 1 });
 
 module.exports = mongoose.model('Task', taskSchema);

@@ -14,6 +14,8 @@ const referralRoutes = require('./routes/referral');
 const adminRoutes = require('./routes/admin');
 
 const fs = require('fs');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const { startBotPolling } = require('./bot');
 
 const app = express();
@@ -21,7 +23,9 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
-// Middleware
+// Middleware: Compression (gzip/brotli response acceleration)
+app.use(compression());
+
 app.use(helmet({
   contentSecurityPolicy: false, // For embedded iframe / Telegram Mini App compatibility
 }));
@@ -31,6 +35,16 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(morgan('dev'));
+
+// Rate Limiter: protect API endpoints against spam and DDoS
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please slow down.' },
+});
+app.use('/api', apiLimiter);
 
 // Static Client Files (when built in production)
 const clientDistPath = path.resolve(__dirname, '../client/dist');

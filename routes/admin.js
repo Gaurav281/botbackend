@@ -181,7 +181,10 @@ router.post('/withdrawals/:id/reject', async (req, res) => {
  */
 router.get('/promo-codes', async (req, res) => {
   try {
-    const promoCodes = await PromoCode.find().sort({ createdAt: -1 }).lean();
+    const promoCodes = await PromoCode.find()
+      .select('code rewardPoints maxUsers usedCount isActive createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ success: true, promoCodes });
   } catch (error) {
     console.error('Admin promo codes error:', error);
