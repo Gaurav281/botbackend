@@ -63,50 +63,59 @@ async function configureMenuButton() {
 function maskUsername(username, firstName) {
   if (username) {
     const clean = username.replace('@', '').trim();
-    if (clean.length <= 3) return `@${clean[0]}*${clean.slice(-1)}`;
-    return `@${clean.slice(0, 2)}****${clean.slice(-2)}`;
+    if (clean.length <= 4) return `@${clean[0]}***${clean.slice(-1)}`;
+    return `@${clean.slice(0, 3)}****${clean.slice(-2)}`;
   }
   if (firstName) {
     const clean = firstName.trim();
-    if (clean.length <= 3) return `${clean[0]}*${clean.slice(-1)}`;
-    return `${clean.slice(0, 2)}****${clean.slice(-1)}`;
+    if (clean.length <= 4) return `${clean[0]}***${clean.slice(-1)}`;
+    return `${clean.slice(0, 2)}****${clean.slice(-2)}`;
   }
   return 'Player';
 }
 
 function maskUpi(upi) {
-  if (!upi) return 'UPI';
+  if (!upi) return 'upi****@bank';
   const parts = upi.split('@');
-  if (parts.length < 2) return 'UPI';
+  if (parts.length < 2) return 'upi****@bank';
   const handle = parts[0];
   const provider = parts[1];
   const maskedHandle =
     handle.length <= 4
-      ? `${handle[0]}****`
-      : `${handle.slice(0, 2)}****${handle.slice(-2)}`;
+      ? `${handle.slice(0, 2)}****`
+      : `${handle.slice(0, 3)}****${handle.slice(-2)}`;
   return `${maskedHandle}@${provider}`;
 }
 
 function maskTxnId(txnRef) {
   if (!txnRef) return 'UPI/****9821';
   const str = String(txnRef).trim();
-  if (str.length <= 6) return 'UPI/****';
-  return `${str.slice(0, 4)}****${str.slice(-3)}`;
+  if (str.length <= 8) return 'UPI/****' + str.slice(-3);
+  return `${str.slice(0, 7)}****${str.slice(-4)}`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**
  * Send official payout notification to @FireflyPayouts channel
  */
-async function sendPayoutNotification(withdrawal, userDoc, transactionRef) {
+async function sendPayoutNotification(withdrawal, userDoc, transactionRef, customTimestamp) {
   try {
-    const shortRef = withdrawal._id.toString().slice(-4).toUpperCase();
+    const shortRef = withdrawal._id ? withdrawal._id.toString().slice(-4).toUpperCase() : '7B21';
     const maskedUser = maskUsername(userDoc?.username, userDoc?.firstName);
     const maskedUpiId = maskUpi(withdrawal.upiId);
     const maskedTxn = maskTxnId(transactionRef || withdrawal.transactionRef);
     const amountStr = Number(withdrawal.amountInr).toFixed(2);
 
-    const now = new Date();
-    const timeStr = now.toLocaleDateString('en-IN', {
+    const eventDate = customTimestamp || withdrawal.createdAt || new Date();
+    const timeStr = new Date(eventDate).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -116,25 +125,21 @@ async function sendPayoutNotification(withdrawal, userDoc, transactionRef) {
     });
 
     const messageText =
-      `⚡️ *Payout Sent #${shortRef}*\n\n` +
-      `👤 *User:* ${maskedUser}\n` +
-      `💰 *Amount:* ₹${amountStr}\n` +
-      `💳 *Payment Method:* UPI (${maskedUpiId})\n` +
-      `🧾 *Txn ID:* \`${maskedTxn}\`\n` +
-      `⏰ *Time:* ${timeStr} IST\n\n` +
-      `✅ *Verified Payout by Firefly Play*`;
+      `⚡️ <b>Payout Sent #${shortRef}</b>\n\n` +
+      `👤 <b>User:</b> ${escapeHtml(maskedUser)}\n` +
+      `💰 <b>Amount:</b> ₹${amountStr}\n` +
+      `💳 <b>Payment Method:</b> UPI (${escapeHtml(maskedUpiId)})\n` +
+      `🧾 <b>Txn ID:</b> <code>${escapeHtml(maskedTxn)}</code>\n` +
+      `⏰ <b>Time:</b> ${timeStr} IST\n\n` +
+      `✅ <b>Verified Payout by Firefly Play</b>`;
 
     const res = await callTelegramApi('sendMessage', {
       chat_id: PAYOUT_CHANNEL,
       text: messageText,
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
           [
-            {
-              text: '🔍 Verify',
-              url: `https://t.me/FireflyPlayBot?start=payout_${withdrawal._id}`,
-            },
             {
               text: '🚀 Open Firefly Play',
               url: 'https://t.me/FireflyPlayBot/app',
@@ -203,21 +208,25 @@ async function startBotPolling() {
                     timeZone: 'Asia/Kolkata',
                   });
 
+                  const recipient = escapeHtml(w.userId?.firstName || w.userId?.username || 'Pilot');
+                  const upiClean = escapeHtml(w.upiId);
+                  const txnClean = escapeHtml(w.transactionRef || 'Settled via Instant UPI');
+
                   const receiptMsg =
-                    `🧾 *Official Firefly Payout Receipt*\n\n` +
-                    `🆔 *Payout Ref:* #${shortId}\n` +
-                    `💰 *Amount Paid:* ₹${w.amountInr.toFixed(2)}\n` +
-                    `👤 *Recipient:* ${w.userId?.firstName || w.userId?.username || 'Pilot'}\n` +
-                    `💳 *UPI ID:* \`${w.upiId}\`\n` +
-                    `🧾 *Complete Txn ID:* \`${w.transactionRef || 'Settled via Instant UPI'}\`\n` +
-                    `📅 *Processed At:* ${dateStr} IST\n` +
-                    `⚡️ *Status:* ✅ Transferred & Confirmed\n\n` +
-                    `_This withdrawal was approved and verified by the Firefly Play financial gateway._`;
+                    `🧾 <b>Official Firefly Payout Receipt</b>\n\n` +
+                    `🆔 <b>Payout Ref:</b> #${shortId}\n` +
+                    `💰 <b>Amount Paid:</b> ₹${w.amountInr.toFixed(2)}\n` +
+                    `👤 <b>Recipient:</b> ${recipient}\n` +
+                    `💳 <b>UPI ID:</b> <code>${upiClean}</code>\n` +
+                    `🧾 <b>Complete Txn ID:</b> <code>${txnClean}</code>\n` +
+                    `📅 <b>Processed At:</b> ${dateStr} IST\n` +
+                    `⚡️ <b>Status:</b> ✅ Transferred & Confirmed\n\n` +
+                    `<i>This withdrawal was approved and verified by the Firefly Play financial gateway.</i>`;
 
                   await callTelegramApi('sendMessage', {
                     chat_id: chatId,
                     text: receiptMsg,
-                    parse_mode: 'Markdown',
+                    parse_mode: 'HTML',
                     reply_markup: {
                       inline_keyboard: [
                         [
