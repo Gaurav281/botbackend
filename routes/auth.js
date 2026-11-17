@@ -206,6 +206,10 @@ router.get('/channels-status', authMiddleware, async (req, res) => {
     const tgId = user.telegramId;
 
     if (!tgId || isNaN(Number(tgId)) || user.isAdmin) {
+      if (!user.hasJoinedChannels) {
+        user.hasJoinedChannels = true;
+        await user.save();
+      }
       return res.json({
         success: true,
         channel: true,
@@ -225,12 +229,20 @@ router.get('/channels-status', authMiddleware, async (req, res) => {
     // For invite link group without known ID, maintain user-confirmed flag or groupJoined
     const groupJoined = user.hasJoinedGroup || false;
 
+    // Persist hasJoinedChannels on user record if channel joined
+    if (channelJoined && !user.hasJoinedChannels) {
+      user.hasJoinedChannels = true;
+      await user.save();
+    }
+
+    const allJoined = channelJoined && (user.hasJoinedChannels || false);
+
     res.json({
       success: true,
       channel: channelJoined,
       group: groupJoined,
       payouts: payoutsJoined,
-      allJoined: channelJoined && (user.hasJoinedChannels || false),
+      allJoined,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
