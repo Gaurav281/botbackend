@@ -187,6 +187,47 @@ router.patch('/preferences', authMiddleware, async (req, res) => {
 });
 
 /**
+ * GET /api/auth/channels-status
+ * Checks membership for individual channels
+ */
+router.get('/channels-status', authMiddleware, async (req, res) => {
+  try {
+    const user = req.user;
+    const tgId = user.telegramId;
+
+    if (!tgId || isNaN(Number(tgId)) || user.isAdmin) {
+      return res.json({
+        success: true,
+        channel: true,
+        group: true,
+        payouts: true,
+        allJoined: true,
+      });
+    }
+
+    const [channelRes, payoutsRes] = await Promise.all([
+      checkChatMember('@FireflyPlay', tgId),
+      checkChatMember('@FireflyPayouts', tgId),
+    ]);
+
+    const channelJoined = channelRes.ok ? channelRes.isMember : false;
+    const payoutsJoined = payoutsRes.ok ? payoutsRes.isMember : false;
+    // For invite link group without known ID, maintain user-confirmed flag or groupJoined
+    const groupJoined = user.hasJoinedGroup || false;
+
+    res.json({
+      success: true,
+      channel: channelJoined,
+      group: groupJoined,
+      payouts: payoutsJoined,
+      allJoined: channelJoined && (user.hasJoinedChannels || false),
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * POST /api/auth/verify-channels
  * Verifies that the user has joined the required Telegram channels before accessing the mini app
  */
@@ -202,6 +243,7 @@ router.post('/verify-channels', authMiddleware, async (req, res) => {
       return res.json({
         success: true,
         user,
+        status: { channel: true, group: true, payouts: true },
         message: 'Dev environment: Channels verified!',
       });
     }
@@ -213,30 +255,43 @@ router.post('/verify-channels', authMiddleware, async (req, res) => {
       return res.json({
         success: true,
         user,
+        status: { channel: true, group: true, payouts: true },
         message: 'Admin access: Verified!',
       });
     }
 
-    // Query Telegram Bot API for @FireflyPlay
-    const channelResult = await checkChatMember('@FireflyPlay', tgId);
+    const [channelRes, payoutsRes] = await Promise.all([
+      checkChatMember('@FireflyPlay', tgId),
+      checkChatMember('@FireflyPayouts', tgId),
+    ]);
 
-    // If channel check explicitly confirms user has NOT joined
-    if (channelResult.ok && !channelResult.isMember) {
+    const channelJoined = channelRes.ok ? channelRes.isMember : true; // if bot not added, don't hard block
+    const payoutsJoined = payoutsRes.ok ? payoutsRes.isMember : true;
+
+    if (channelRes.ok && !channelRes.isMember) {
       return res.status(400).json({
         success: false,
-        message: 'Please join our Telegram channel @FireflyPlay first, then click verify!',
-        joinedChannel: false,
+        message: 'Please join our channel @FireflyPlay first, then tap "I\'ve joined"!',
+        status: {
+          channel: false,
+          group: req.body?.groupJoined ?? true,
+          payouts: payoutsJoined,
+        },
       });
     }
 
-    // Marked as joined
     user.hasJoinedChannels = true;
     await user.save();
 
     res.json({
       success: true,
       user,
-      message: '✅ Verified! Welcome to Firefly Play!',
+      status: {
+        channel: true,
+        group: true,
+        payouts: payoutsJoined,
+      },
+      message: 'Verified! Welcome to Firefly Play!',
     });
   } catch (error) {
     console.error('Verify channels error:', error);
