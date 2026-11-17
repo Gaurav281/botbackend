@@ -38,35 +38,40 @@ router.post('/start', authMiddleware, async (req, res) => {
  */
 router.post('/finish', authMiddleware, async (req, res) => {
   try {
-    const { score, enemiesKilled, bossKilled, difficulty } = req.body;
+    const { score, enemiesKilled, bossKilled, difficulty, isTournament } = req.body;
     const user = req.user;
 
     const validScore = Math.max(0, parseInt(score) || 0);
     const validKills = Math.max(0, parseInt(enemiesKilled) || 0);
     const isBossDefeated = Boolean(bossKilled);
+    const tournamentMatch = Boolean(isTournament);
 
     // Difficulty cap as per UI: Easy: 100 PTS, Normal: 150 PTS, Hard: 220 PTS
     let maxBasePoints = 150;
     if (difficulty === 'easy') maxBasePoints = 100;
     if (difficulty === 'hard') maxBasePoints = 220;
 
-    // Base coins earned from gameplay performance
-    const baseCoinsEarned = Math.min(maxBasePoints, Math.floor(validScore / 10));
+    // Per user requirement: In tournament match, do NOT add PTS to user PTS balance!
+    const baseCoinsEarned = tournamentMatch ? 0 : Math.min(maxBasePoints, Math.floor(validScore / 10));
 
     // Prepare atomic update
     const updateOps = {
       $inc: {
-        coins: baseCoinsEarned,
-        wonToday: baseCoinsEarned,
         totalKills: validKills,
       },
     };
+
+    if (baseCoinsEarned > 0) {
+      updateOps.$inc.coins = baseCoinsEarned;
+      updateOps.$inc.wonToday = baseCoinsEarned;
+    }
 
     if (validScore > user.highScore) {
       updateOps.$set = { highScore: validScore };
     }
 
-    if (isBossDefeated) {
+    // Only set boss kill claim in normal arena games, not tournament matches
+    if (isBossDefeated && !tournamentMatch) {
       if (!updateOps.$set) updateOps.$set = {};
       updateOps.$set.bossKillPendingClaim = true;
       updateOps.$inc.bossKills = 1;

@@ -341,11 +341,57 @@ async function checkChatMember(chatId, userId) {
   }
 }
 
+/**
+ * Verify whether user has added bot invite link to their Telegram Bio
+ */
+async function verifyUserBio(telegramId, referralCode) {
+  try {
+    const res = await callTelegramApi('getChat', { chat_id: telegramId });
+    if (!res || !res.ok || !res.result) {
+      return {
+        verified: false,
+        reason: 'Could not fetch your Telegram profile. Please send /start to @FireflyPlayBot and try again.',
+      };
+    }
+
+    const bio = (res.result.bio || '').toLowerCase().trim();
+    if (!bio) {
+      return {
+        verified: false,
+        reason: 'Your bio is empty (or hidden). Please paste your invite link into your Telegram bio and ensure Bio visibility is set to Everybody in Telegram Privacy Settings.',
+      };
+    }
+
+    // Check if bio contains bot link, bot username, or referral code
+    const hasInviteLink =
+      bio.includes('fireflyplaybot') ||
+      bio.includes('t.me/fireflyplay') ||
+      bio.includes('firefly play') ||
+      (referralCode && bio.includes(referralCode.toLowerCase()));
+
+    if (!hasInviteLink) {
+      return {
+        verified: false,
+        reason: 'Your Telegram bio does not contain your Firefly invite link (https://t.me/FireflyPlayBot). Please add it to your bio and try again!',
+      };
+    }
+
+    return { verified: true, bio: res.result.bio };
+  } catch (err) {
+    console.error('Error verifying user bio:', err);
+    return {
+      verified: false,
+      reason: 'Failed to verify bio. Please ensure Bio is set to Everybody in Telegram Settings → Privacy and Security.',
+    };
+  }
+}
+
 module.exports = {
   configureMenuButton,
   startBotPolling,
   stopBotPolling,
   callTelegramApi,
   checkChatMember,
+  verifyUserBio,
   sendPayoutNotification,
 };

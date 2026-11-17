@@ -303,24 +303,34 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
     }
 
     const user = req.user;
+    const coinsInr = (user.coins || 0) / POINTS_PER_INR;
+    const totalAvailableInr = coinsInr + (user.withdrawableBalance || 0);
 
-    // Check if user has sufficient withdrawable balance
-    if (user.withdrawableBalance < requestedAmount) {
+    // Check if user has sufficient total withdrawable value from PTS + balance
+    if (totalAvailableInr < requestedAmount) {
       return res.status(400).json({
         success: false,
-        message: `Insufficient withdrawable balance. You have ₹${user.withdrawableBalance.toFixed(2)}. Please convert your PTS first.`,
+        message: `Insufficient balance! You have ₹${totalAvailableInr.toFixed(2)} (${(user.coins || 0).toLocaleString('en-IN')} PTS). Minimum withdrawal is ₹${MIN_WITHDRAW_INR}.`,
       });
     }
 
-    // Atomic deduction
-    const updatedUser = await User.findOneAndUpdate(
-      { _id: user._id, withdrawableBalance: { $gte: requestedAmount } },
-      {
-        $inc: { withdrawableBalance: -requestedAmount },
-        $set: { savedUpiId: cleanUpiId },
-      },
-      { new: true }
-    );
+    // Deduct from withdrawableBalance first if any, then remainder directly from points (1000 PTS = ₹1)
+    let deductFromWithdrawable = Math.min(user.withdrawableBalance || 0, requestedAmount);
+    let remainderInr = requestedAmount - deductFromWithdrawable;
+    let deductPoints = Math.round(remainderInr * POINTS_PER_INR);
+
+    const updateOps = {
+      $set: { savedUpiId: cleanUpiId },
+      $inc: {},
+    };
+    if (deductFromWithdrawable > 0) {
+      updateOps.$inc.withdrawableBalance = -deductFromWithdrawable;
+    }
+    if (deductPoints > 0) {
+      updateOps.$inc.coins = -deductPoints;
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(user._id, updateOps, { new: true });
 
     if (!updatedUser) {
       return res.status(400).json({

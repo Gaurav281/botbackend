@@ -16,109 +16,7 @@ const DEFAULT_CATEGORIES = {
   exclusive: true,
 };
 
-// Seed default tasks if empty
-const defaultTasks = [
-  {
-    title: 'Play Firefly Tap Mini App',
-    subtitle: 'Open app & reach Level 3 with Telegram ID',
-    category: 'app_tasks',
-    reward: 350,
-    actionType: 'app_task',
-    actionUrl: 'https://t.me/FireflyPlayBot',
-    targetAppId: 'firefly_tap',
-    requiredLevel: 3,
-    icon: 'smartphone',
-    badge: '+350',
-  },
-  {
-    title: 'Join Space Miner TMA',
-    subtitle: 'Complete beginner quest in partner TMA',
-    category: 'app_tasks',
-    reward: 400,
-    actionType: 'app_task',
-    actionUrl: 'https://t.me/FireflyPlayBot',
-    targetAppId: 'space_miner',
-    requiredLevel: 1,
-    icon: 'zap',
-    badge: '+400',
-  },
-  {
-    title: 'Join Official Channel',
-    subtitle: 'Join our official announcements channel',
-    category: 'social',
-    reward: 300,
-    actionType: 'telegram',
-    actionUrl: 'https://t.me/FireflyPlayBot',
-    icon: 'megaphone',
-    badge: '+300',
-  },
-  {
-    title: 'Join Community Chat',
-    subtitle: 'Chat with other Fire Fly Play pilots',
-    category: 'social',
-    reward: 300,
-    actionType: 'telegram',
-    actionUrl: 'https://t.me/FireflyPlayBot',
-    icon: 'message-circle',
-    badge: '+300',
-  },
-  {
-    title: 'Watch Adsgram Ad',
-    subtitle: 'Watch a quick video and earn coins',
-    category: 'daily',
-    reward: 120,
-    actionType: 'ad_watch',
-    actionUrl: '',
-    icon: 'tv',
-    badge: '+120',
-  },
-  {
-    title: 'Watch Monetag Sponsor Ad',
-    subtitle: 'Support the game and earn bonus points',
-    category: 'daily',
-    reward: 100,
-    actionType: 'ad_watch',
-    actionUrl: '',
-    icon: 'tv',
-    badge: '+100',
-  },
-  {
-    title: 'Partner Airdrop Quest',
-    subtitle: 'Stay 10s on the partner page',
-    category: 'partner',
-    reward: 120,
-    actionType: 'sponsor',
-    actionUrl: 'https://telegram.org',
-    delaySeconds: 10,
-    icon: 'sparkles',
-    badge: '+120',
-  },
-  {
-    title: 'Follow Twitter / X',
-    subtitle: 'Stay updated with latest tournament news',
-    category: 'exclusive',
-    reward: 250,
-    actionType: 'link',
-    actionUrl: 'https://twitter.com',
-    icon: 'globe',
-    badge: '+250',
-  },
-];
-
-async function ensureSeedTasks() {
-  const count = await Task.countDocuments();
-  if (count === 0) {
-    await Task.insertMany(defaultTasks);
-    console.log('✅ Seeded default tasks');
-  } else {
-    const appTasksCount = await Task.countDocuments({ category: 'app_tasks' });
-    if (appTasksCount === 0) {
-      await Task.insertMany(defaultTasks.filter((t) => t.category === 'app_tasks'));
-      console.log('✅ Seeded app_tasks');
-    }
-  }
-}
-ensureSeedTasks();
+// No hardcoded demo tasks - tasks are managed exclusively via Admin Panel
 
 /**
  * Get all tasks with user completion status and checkin info
@@ -288,13 +186,14 @@ router.post('/:id/claim', authMiddleware, async (req, res) => {
 });
 
 /**
- * Daily check-in claim
+ * Daily check-in claim (strictly verifies invite link in user's Telegram bio)
  */
 router.post('/checkin', authMiddleware, async (req, res) => {
   try {
     const user = req.user;
     const now = new Date();
 
+    // 1. Check if user already claimed today
     if (user.lastCheckIn) {
       const last = new Date(user.lastCheckIn);
       const isSameDay =
@@ -314,6 +213,16 @@ router.post('/checkin', authMiddleware, async (req, res) => {
       if (hoursDiff > 48) {
         user.streak = 0; // Reset streak
       }
+    }
+
+    // 2. Strictly verify whether the user has added their invite link to their Telegram Bio
+    const { verifyUserBio } = require('../bot');
+    const bioResult = await verifyUserBio(user.telegramId, user.referralCode);
+    if (!bioResult.verified) {
+      return res.status(400).json({
+        success: false,
+        message: bioResult.reason || 'Invite link not found in your Telegram bio! Please add the link to your bio and ensure Bio visibility is set to Everybody.',
+      });
     }
 
     const currentStreakIndex = (user.streak || 0) % 7;
