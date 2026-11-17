@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { verifyTelegramWebAppData, authMiddleware } = require('../middleware/auth');
+const { checkChatMember } = require('../bot');
 
 /**
  * Generate unique referral code
@@ -182,6 +183,64 @@ router.patch('/preferences', authMiddleware, async (req, res) => {
     res.json({ success: true, user: updatedUser });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/auth/verify-channels
+ * Verifies that the user has joined the required Telegram channels before accessing the mini app
+ */
+router.post('/verify-channels', authMiddleware, async (req, res) => {
+  try {
+    const user = req.user;
+    const tgId = user.telegramId;
+
+    // Dev user or testing outside Telegram
+    if (!tgId || isNaN(Number(tgId))) {
+      user.hasJoinedChannels = true;
+      await user.save();
+      return res.json({
+        success: true,
+        user,
+        message: 'Dev environment: Channels verified!',
+      });
+    }
+
+    // Admin user automatically passes
+    if (user.isAdmin) {
+      user.hasJoinedChannels = true;
+      await user.save();
+      return res.json({
+        success: true,
+        user,
+        message: 'Admin access: Verified!',
+      });
+    }
+
+    // Query Telegram Bot API for @FireflyPlay
+    const channelResult = await checkChatMember('@FireflyPlay', tgId);
+
+    // If channel check explicitly confirms user has NOT joined
+    if (channelResult.ok && !channelResult.isMember) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please join our Telegram channel @FireflyPlay first, then click verify!',
+        joinedChannel: false,
+      });
+    }
+
+    // Marked as joined
+    user.hasJoinedChannels = true;
+    await user.save();
+
+    res.json({
+      success: true,
+      user,
+      message: '✅ Verified! Welcome to Firefly Play!',
+    });
+  } catch (error) {
+    console.error('Verify channels error:', error);
+    res.status(500).json({ success: false, message: 'Server error during verification' });
   }
 });
 

@@ -84,7 +84,7 @@ async function startBotPolling() {
 
           const text = msg.text.trim();
           const chatId = msg.chat.id;
-          const firstName = msg.from?.first_name || 'Player';
+          const username = msg.from?.username ? `@${msg.from.username}` : (msg.from?.first_name || 'Player');
 
           if (text.startsWith('/start')) {
             // Check for referral parameter e.g. /start AST1234
@@ -95,32 +95,43 @@ async function startBotPolling() {
               : MINI_APP_URL;
 
             const welcomeMessage =
-              `🚀 *Welcome to Fire Fly Play, ${firstName}!* 🛸\n\n` +
-              `Blast hostile asteroids, defeat alien squadrons, take down the Mothership, and convert your PTS into real *₹ INR via UPI*!\n\n` +
-              `💰 *1,000 PTS = ₹1.00 INR*\n` +
-              `⚡ Instant convert from 1 PTS upwards\n` +
-              `💳 Withdraw anytime to your UPI ID (Min: ₹10)\n\n` +
-              `Tap *Play Now* below to launch the game:`;
+              `⚡️ *Welcome to Firefly Play!*\n` +
+              `Hey ${username}, welcome to the Firefly's community! ❤️\n\n` +
+              `Play, complete tasks, invite friends, and earn PTS that can be withdrawn easily into real USDT.\n\n` +
+              `Play • Earn • Withdraw`;
 
             await callTelegramApi('sendMessage', {
               chat_id: chatId,
               text: welcomeMessage,
-              parse_mode: 'Markdown',
               reply_markup: {
                 inline_keyboard: [
                   [
                     {
-                      text: '🎮 Play Fire Fly Now',
+                      text: '🎮 Launch Firefly Play',
                       web_app: { url: appUrl },
                     },
                   ],
                   [
                     {
-                      text: '👥 Share with Friends',
+                      text: '📢 Firefly Channel',
+                      url: 'https://t.me/FireflyPlay',
+                    },
+                    {
+                      text: '💬 Community Group',
+                      url: 'https://t.me/+K1hfu9rlv9kwYzA9',
+                    },
+                  ],
+                  [
+                    {
+                      text: '💳 Payout Proofs',
+                      url: 'https://t.me/FireflyPayouts',
+                    },
+                    {
+                      text: '👥 Invite Friends',
                       url: `https://t.me/share/url?url=${encodeURIComponent(
                         `https://t.me/FireflyPlayBot?start=${msg.from?.id || ''}`
                       )}&text=${encodeURIComponent(
-                        'Join me on Fire Fly Play! Blast asteroids and earn real cash rewards!'
+                        'Join Firefly Play! Blast enemies and earn real rewards!'
                       )}`,
                     },
                   ],
@@ -147,9 +158,30 @@ function stopBotPolling() {
   isPolling = false;
 }
 
+/**
+ * Check if a user has joined a chat/channel
+ */
+async function checkChatMember(chatId, userId) {
+  try {
+    const res = await callTelegramApi('getChatMember', {
+      chat_id: chatId,
+      user_id: Number(userId),
+    });
+    if (!res || !res.ok) {
+      return { ok: false, error: res?.description || 'Error querying chat member' };
+    }
+    const status = res.result?.status;
+    const isMember = ['creator', 'administrator', 'member', 'restricted'].includes(status);
+    return { ok: true, isMember, status };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   configureMenuButton,
   startBotPolling,
   stopBotPolling,
   callTelegramApi,
+  checkChatMember,
 };
