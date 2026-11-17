@@ -240,28 +240,20 @@ router.post('/promo-codes', async (req, res) => {
 });
 
 /**
- * DELETE /api/admin/promo-codes/:id - Toggle active or delete promo code
+ * DELETE /api/admin/promo-codes/:id - Delete promo code permanently
  */
 router.delete('/promo-codes/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const promo = await PromoCode.findById(id);
+    const promo = await PromoCode.findByIdAndDelete(id);
     if (!promo) {
       return res.status(404).json({ success: false, message: 'Promo code not found' });
     }
 
-    // Toggle active state or delete if inactive
-    if (promo.isActive) {
-      promo.isActive = false;
-      await promo.save();
-      return res.json({ success: true, message: `Promo code ${promo.code} deactivated.`, promoCode: promo });
-    } else {
-      await PromoCode.findByIdAndDelete(id);
-      return res.json({ success: true, message: `Promo code ${promo.code} deleted permanently.` });
-    }
+    return res.json({ success: true, message: `Promo code ${promo.code} deleted permanently.` });
   } catch (error) {
     console.error('Delete promo code error:', error);
-    res.status(500).json({ success: false, message: 'Server error updating promo code' });
+    res.status(500).json({ success: false, message: 'Server error deleting promo code' });
   }
 });
 
