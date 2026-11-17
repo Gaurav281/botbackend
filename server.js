@@ -12,6 +12,7 @@ const walletRoutes = require('./routes/wallet');
 const tasksRoutes = require('./routes/tasks');
 const referralRoutes = require('./routes/referral');
 const adminRoutes = require('./routes/admin');
+const tournamentRoutes = require('./routes/tournaments');
 
 const fs = require('fs');
 const compression = require('compression');
@@ -59,6 +60,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/tournaments', tournamentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

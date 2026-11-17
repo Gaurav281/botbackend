@@ -73,23 +73,35 @@ const authMiddleware = async (req, res, next) => {
 const adminMiddleware = async (req, res, next) => {
   try {
     const telegramId = req.headers['x-telegram-id'];
-    const adminId = String(process.env.ADMIN_TELEGRAM_ID || '5802486388');
-    const adminUsername = String(process.env.ADMIN_USERNAME || 'Gaurav_281').toLowerCase();
+    const adminId = String(process.env.ADMIN_TELEGRAM_ID || '5802486388').trim();
+    const adminUsername = String(process.env.ADMIN_USERNAME || 'Gaurav_281').toLowerCase().replace('@', '').trim();
 
     let user = req.user;
     if (!user && telegramId) {
-      user = await User.findOne({ telegramId });
+      user = await User.findOne({ telegramId: String(telegramId).trim() });
+    }
+
+    // Fallback: If telegramId matches adminId or username matches admin, find or create admin
+    if (!user && telegramId && String(telegramId).trim() === adminId) {
+      user = await User.findOne({ telegramId: adminId });
     }
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Authentication required for admin access.' });
     }
 
-    const isMatchId = String(user.telegramId) === adminId;
-    const isMatchUsername = user.username && user.username.toLowerCase() === adminUsername;
+    const cleanUserUsername = (user.username || '').toLowerCase().replace('@', '').trim();
+    const isMatchId = String(user.telegramId).trim() === adminId;
+    const isMatchUsername = cleanUserUsername && cleanUserUsername === adminUsername;
 
     if (!isMatchId && !isMatchUsername && !user.isAdmin) {
       return res.status(403).json({ success: false, message: 'Access denied: Admin privileges required.' });
+    }
+
+    // Ensure isAdmin is persisted in database
+    if (!user.isAdmin) {
+      user.isAdmin = true;
+      await user.save();
     }
 
     req.user = user;

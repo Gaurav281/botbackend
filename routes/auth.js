@@ -131,12 +131,13 @@ router.post('/telegram', async (req, res) => {
     }
 
     // Check admin status
-    const adminId = String(process.env.ADMIN_TELEGRAM_ID || '5802486388');
-    const adminUsername = String(process.env.ADMIN_USERNAME || 'Gaurav_281').toLowerCase();
-    const isAdmin = telegramId === adminId || (user.username && user.username.toLowerCase() === adminUsername);
+    const adminId = String(process.env.ADMIN_TELEGRAM_ID || '5802486388').trim();
+    const adminUsername = String(process.env.ADMIN_USERNAME || 'Gaurav_281').toLowerCase().replace('@', '').trim();
+    const cleanUsername = (user.username || '').toLowerCase().replace('@', '').trim();
+    const isAdmin = String(telegramId).trim() === adminId || (cleanUsername && cleanUsername === adminUsername);
 
-    if (user.isAdmin !== isAdmin) {
-      user.isAdmin = isAdmin;
+    if (isAdmin || user.isAdmin !== isAdmin) {
+      user.isAdmin = isAdmin || user.isAdmin;
       await user.save();
     }
 
@@ -156,6 +157,15 @@ router.post('/telegram', async (req, res) => {
  */
 router.get('/me', authMiddleware, async (req, res) => {
   try {
+    const adminId = String(process.env.ADMIN_TELEGRAM_ID || '5802486388').trim();
+    const adminUsername = String(process.env.ADMIN_USERNAME || 'Gaurav_281').toLowerCase().replace('@', '').trim();
+    const cleanUsername = (req.user.username || '').toLowerCase().replace('@', '').trim();
+    if (String(req.user.telegramId).trim() === adminId || (cleanUsername && cleanUsername === adminUsername)) {
+      if (!req.user.isAdmin) {
+        req.user.isAdmin = true;
+        await req.user.save();
+      }
+    }
     res.json({ success: true, user: req.user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
