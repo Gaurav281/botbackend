@@ -63,6 +63,18 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    gameEnergy: {
+      matchesRemaining: {
+        type: Number,
+        default: 50,
+        min: 0,
+        max: 50,
+      },
+      lastResetAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
     highScore: {
       type: Number,
       default: 0,
@@ -113,5 +125,27 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ username: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ coins: -1 });
+
+userSchema.methods.getGameEnergy = function () {
+  const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+  const now = Date.now();
+  if (!this.gameEnergy || !this.gameEnergy.lastResetAt) {
+    this.gameEnergy = { matchesRemaining: 50, lastResetAt: new Date(now) };
+  } else {
+    const elapsed = now - new Date(this.gameEnergy.lastResetAt).getTime();
+    if (elapsed >= TWELVE_HOURS_MS) {
+      this.gameEnergy.matchesRemaining = 50;
+      this.gameEnergy.lastResetAt = new Date(now);
+    }
+  }
+  const nextResetAt = new Date(new Date(this.gameEnergy.lastResetAt).getTime() + TWELVE_HOURS_MS);
+  return {
+    matchesRemaining: this.gameEnergy.matchesRemaining,
+    maxMatches: 50,
+    lastResetAt: this.gameEnergy.lastResetAt,
+    nextResetAt,
+    msUntilReset: Math.max(0, nextResetAt.getTime() - now),
+  };
+};
 
 module.exports = mongoose.model('User', userSchema);

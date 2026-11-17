@@ -56,6 +56,11 @@ const tournamentSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    gameType: {
+      type: String,
+      enum: ['asteroid_blaster', 'car_runner'],
+      default: 'asteroid_blaster',
+    },
     entryFee: {
       type: Number,
       required: true,

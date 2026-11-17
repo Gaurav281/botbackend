@@ -76,6 +76,7 @@ function formatTournamentData(tournamentDoc, currentUserId, currentTelegramId) {
     _id: t._id,
     title: t.title,
     description: t.description,
+    gameType: t.gameType || 'asteroid_blaster',
     entryFee: t.entryFee,
     prizePool: t.prizePool,
     maxParticipants: t.maxParticipants,
@@ -337,6 +338,7 @@ router.post('/admin/create', authMiddleware, adminMiddleware, async (req, res) =
     const {
       title,
       description,
+      gameType,
       entryFee,
       prizePool,
       maxParticipants,
@@ -391,6 +393,7 @@ router.post('/admin/create', authMiddleware, adminMiddleware, async (req, res) =
     const newTournament = await Tournament.create({
       title: title.trim(),
       description: (description || '').trim(),
+      gameType: gameType === 'car_runner' ? 'car_runner' : 'asteroid_blaster',
       entryFee: fee,
       prizePool: pool,
       maxParticipants: maxP,

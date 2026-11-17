@@ -11,9 +11,10 @@ const { authMiddleware } = require('../middleware/auth');
 router.post('/start', authMiddleware, async (req, res) => {
   try {
     const user = req.user;
+    const { gameType } = req.body;
 
-    // Check if player has unclaimed boss reward
-    if (user.bossKillPendingClaim) {
+    // Check if player has unclaimed boss reward (only locks Asteroid Blaster)
+    if (gameType !== 'car_runner' && user.bossKillPendingClaim) {
       return res.status(400).json({
         success: false,
         code: 'BOSS_CLAIM_PENDING',
@@ -21,11 +22,30 @@ router.post('/start', authMiddleware, async (req, res) => {
       });
     }
 
+    // Check 50 matches per 12 hours limit (shared between both games)
+    const energy = user.getGameEnergy();
+    if (energy.matchesRemaining <= 0) {
+      const hours = Math.floor(energy.msUntilReset / (1000 * 60 * 60));
+      const mins = Math.ceil((energy.msUntilReset % (1000 * 60 * 60)) / (1000 * 60));
+      return res.status(400).json({
+        success: false,
+        code: 'MATCH_LIMIT_REACHED',
+        message: `Match limit reached (50/50)! Resets in ${hours}h ${mins}m.`,
+        energy,
+      });
+    }
+
+    // Deduct 1 match from user's 50 matches limit
+    user.gameEnergy.matchesRemaining -= 1;
+    await user.save();
+
     const sessionId = crypto.randomUUID();
 
     res.json({
       success: true,
       sessionId,
+      user,
+      energy: user.getGameEnergy(),
     });
   } catch (error) {
     console.error('Game start error:', error);

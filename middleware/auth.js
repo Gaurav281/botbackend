@@ -59,6 +59,15 @@ const authMiddleware = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found. Please initialize session.' });
     }
 
+    // Refresh 12-hour game energy if needed
+    if (typeof user.getGameEnergy === 'function') {
+      const prevRemaining = user.gameEnergy?.matchesRemaining;
+      user.getGameEnergy();
+      if (prevRemaining !== user.gameEnergy?.matchesRemaining) {
+        await user.save();
+      }
+    }
+
     req.user = user;
     next();
   } catch (error) {
