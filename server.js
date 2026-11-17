@@ -13,6 +13,9 @@ const tasksRoutes = require('./routes/tasks');
 const referralRoutes = require('./routes/referral');
 const adminRoutes = require('./routes/admin');
 
+const fs = require('fs');
+const { startBotPolling } = require('./bot');
+
 const app = express();
 
 // Connect to MongoDB
@@ -29,6 +32,12 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Static Client Files (when built in production)
+const clientDistPath = path.resolve(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+}
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/game', gameRoutes);
@@ -41,12 +50,22 @@ app.use('/api/admin', adminRoutes);
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'Asteroid Blaster Backend API',
+    service: 'Fire Fly Play Backend API',
     time: new Date().toISOString(),
   });
 });
 
-// 404 handler
+// Single Page Application (SPA) routing fallback for frontend
+if (fs.existsSync(clientDistPath)) {
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && req.path !== '/health') {
+      return res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+    next();
+  });
+}
+
+// 404 handler for unmatched API routes
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
@@ -64,4 +83,6 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Asteroid Blaster Server running on port ${PORT}`);
+  // Start bot polling to handle /start and set Telegram Menu Button
+  startBotPolling().catch(err => console.warn('Bot start error:', err.message));
 });

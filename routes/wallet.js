@@ -6,7 +6,7 @@ const Transaction = require('../models/Transaction');
 const PromoCode = require('../models/PromoCode');
 const { authMiddleware } = require('../middleware/auth');
 
-const MIN_WITHDRAW_INR = 50;
+const MIN_WITHDRAW_INR = 10;
 const POINTS_PER_INR = 1000; // 1000 PTS = 1 INR
 
 // Helper: Convert UTC timestamp to IST Date string (YYYY-MM-DD)
