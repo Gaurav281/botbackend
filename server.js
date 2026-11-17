@@ -26,7 +26,7 @@ app.use(helmet({
   contentSecurityPolicy: false, // For embedded iframe / Telegram Mini App compatibility
 }));
 app.use(cors({
-  origin: '*',
+  origin: true,
   credentials: true,
 }));
 app.use(express.json());

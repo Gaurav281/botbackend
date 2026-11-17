@@ -1,7 +1,7 @@
 const https = require('https');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '9254480058:AAEU91vAtIan_4Mjc5shbIDZoFv_wwmbo88';
-const MINI_APP_URL = process.env.MINI_APP_URL || 'https://fireflyplay.onrender.com';
+const MINI_APP_URL = process.env.MINI_APP_URL || 'https://fireflyplayv1.vercel.app';
 
 function callTelegramApi(method, data = {}) {
   return new Promise((resolve, reject) => {
