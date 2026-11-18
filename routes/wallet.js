@@ -146,6 +146,31 @@ router.get('/payout-history', authMiddleware, async (req, res) => {
 });
 
 /**
+ * GET /api/wallet/recent-activities - Get transactions from the last 24 hours (1 day)
+ */
+router.get('/recent-activities', authMiddleware, async (req, res) => {
+  try {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const activities = await Transaction.find({
+      userId: req.user._id,
+      createdAt: { $gte: oneDayAgo },
+    })
+      .select('type amount currency description createdAt')
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({
+      success: true,
+      activities,
+    });
+  } catch (error) {
+    console.error('Recent activities error:', error);
+    res.status(500).json({ success: false, message: 'Server error loading recent activities' });
+  }
+});
+
+/**
  * Convert PTS into withdrawable balance (1000 PTS = 1 INR, even 1 PTS allowed!)
  */
 router.post('/convert', authMiddleware, async (req, res) => {
