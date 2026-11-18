@@ -63,6 +63,24 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    pendingGameReward: {
+      pts: {
+        type: Number,
+        default: 0,
+      },
+      gameType: {
+        type: String,
+        default: '',
+      },
+      difficulty: {
+        type: String,
+        default: 'normal',
+      },
+      score: {
+        type: Number,
+        default: 0,
+      },
+    },
     gameEnergy: {
       matchesRemaining: {
         type: Number,

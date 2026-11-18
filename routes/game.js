@@ -13,6 +13,16 @@ router.post('/start', authMiddleware, async (req, res) => {
     const user = req.user;
     const { gameType } = req.body;
 
+    // Check if user has an unclaimed match reward that requires watching an ad
+    if (user.pendingGameReward && user.pendingGameReward.pts > 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'PENDING_REWARD_CLAIM',
+        message: `Watch the ad to claim your ${user.pendingGameReward.pts} PTS before starting your next match!`,
+        pendingPts: user.pendingGameReward.pts,
+      });
+    }
+
     // Check if player has unclaimed boss reward (only locks Asteroid Blaster)
     if (gameType !== 'car_runner' && user.bossKillPendingClaim) {
       return res.status(400).json({
@@ -58,7 +68,7 @@ router.post('/start', authMiddleware, async (req, res) => {
  */
 router.post('/finish', authMiddleware, async (req, res) => {
   try {
-    const { score, enemiesKilled, bossKilled, difficulty, isTournament } = req.body;
+    const { score, enemiesKilled, bossKilled, difficulty, isTournament, gameType } = req.body;
     const user = req.user;
 
     const validScore = Math.max(0, parseInt(score) || 0);
@@ -81,13 +91,21 @@ router.post('/finish', authMiddleware, async (req, res) => {
       },
     };
 
-    if (baseCoinsEarned > 0) {
-      updateOps.$inc.coins = baseCoinsEarned;
-      updateOps.$inc.wonToday = baseCoinsEarned;
+    // User requirement: Do NOT add PTS directly to user balance. User must watch an Adsgram ad to claim PTS.
+    // Points are held in pendingGameReward until claimed via /claim-pending-reward
+    if (baseCoinsEarned > 0 && !tournamentMatch) {
+      if (!updateOps.$set) updateOps.$set = {};
+      updateOps.$set.pendingGameReward = {
+        pts: baseCoinsEarned,
+        gameType: gameType || 'asteroid_blaster',
+        difficulty: difficulty || 'normal',
+        score: validScore,
+      };
     }
 
     if (validScore > user.highScore) {
-      updateOps.$set = { highScore: validScore };
+      if (!updateOps.$set) updateOps.$set = {};
+      updateOps.$set.highScore = validScore;
     }
 
     // Only set boss kill claim in normal arena games, not tournament matches
@@ -99,45 +117,91 @@ router.post('/finish', authMiddleware, async (req, res) => {
 
     const updatedUser = await User.findByIdAndUpdate(user._id, updateOps, { new: true });
 
-    // Record game reward transaction with real user name
-    if (baseCoinsEarned > 0) {
-      await Transaction.create({
-        userId: user._id,
-        type: 'game_reward',
-        amount: baseCoinsEarned,
-        currency: 'PTS',
-        description: `${user.firstName || 'Pilot'} won +${baseCoinsEarned} in Asteroid Blaster`,
-      });
-
-      // 2% Commission for referrer if exists
-      if (user.referredBy) {
-        const referrer = await User.findOne({ telegramId: user.referredBy });
-        const commission = Math.max(1, Math.floor(baseCoinsEarned * 0.02));
-        if (referrer && commission > 0) {
-          await User.findByIdAndUpdate(referrer._id, {
-            $inc: { coins: commission, referralEarnings: commission },
-          });
-          await Transaction.create({
-            userId: referrer._id,
-            type: 'referral_bonus',
-            amount: commission,
-            currency: 'PTS',
-            description: `2% Game commission from friend (${user.firstName})`,
-          });
-        }
-      }
-    }
-
     res.json({
       success: true,
       baseCoinsEarned,
       isBossDefeated,
       bossKillPendingClaim: updatedUser.bossKillPendingClaim,
+      pendingGameReward: updatedUser.pendingGameReward,
       user: updatedUser,
     });
   } catch (error) {
     console.error('Game finish error:', error);
     res.status(500).json({ success: false, message: 'Server error saving game result' });
+  }
+});
+
+/**
+ * Claim pending match reward after watching Adsgram ad (required before next match)
+ */
+router.post('/claim-pending-reward', authMiddleware, async (req, res) => {
+  try {
+    const user = req.user;
+    const pts = user.pendingGameReward?.pts || 0;
+
+    if (pts <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending match PTS to claim.',
+      });
+    }
+
+    const gameName = user.pendingGameReward?.gameType === 'car_runner' ? 'Mini Racing' : 'Asteroid Blaster';
+
+    // Atomically award the PTS and clear pendingGameReward
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      {
+        $inc: {
+          coins: pts,
+          wonToday: pts,
+        },
+        $set: {
+          'pendingGameReward.pts': 0,
+          'pendingGameReward.gameType': '',
+          'pendingGameReward.score': 0,
+        },
+      },
+      { new: true }
+    );
+
+    // Record game reward transaction
+    await Transaction.create({
+      userId: user._id,
+      type: 'game_reward',
+      amount: pts,
+      currency: 'PTS',
+      description: `${user.firstName || 'Player'} won +${pts} in ${gameName} (Ad Claimed)`,
+    });
+
+    // 2% Commission for referrer if exists
+    if (user.referredBy) {
+      const referrer = await User.findOne({ telegramId: user.referredBy });
+      const commission = Math.max(1, Math.floor(pts * 0.02));
+      if (referrer && commission > 0) {
+        await User.findByIdAndUpdate(referrer._id, {
+          $inc: { coins: commission, referralEarnings: commission },
+        });
+        await Transaction.create({
+          userId: referrer._id,
+          type: 'referral_bonus',
+          amount: commission,
+          currency: 'PTS',
+          description: `2% Game commission from friend (${user.firstName})`,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      claimedPts: pts,
+      coins: updatedUser.coins,
+      wonToday: updatedUser.wonToday,
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error('Claim pending reward error:', error);
+    res.status(500).json({ success: false, message: 'Server error claiming match reward' });
   }
 });
 
