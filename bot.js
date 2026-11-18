@@ -256,16 +256,17 @@ async function startBotPolling() {
               ? `${MINI_APP_URL}?startapp=${encodeURIComponent(param)}`
               : MINI_APP_URL;
 
+            const safeUsername = escapeHtml(username);
             const welcomeMessage =
-              `⚡️ *Welcome to Firefly Play!*\n` +
-              `Hey ${username}, welcome to the Firefly's community! ❤️\n\n` +
-              `Play, complete tasks, invite friends, and earn PTS that can be withdrawn easily into real USDT.\n\n` +
-              `Play • Earn • Withdraw`;
+              `⚡️ <b>Welcome to Firefly Play!</b>\n\n` +
+              `Hey ${safeUsername}, welcome to the Firefly community! ❤️\n\n` +
+              `Play games, complete tasks, invite friends, and earn PTS withdrawable directly to your UPI.\n\n` +
+              `🚀 <b>Play • Earn • Withdraw</b>`;
 
-            await callTelegramApi('sendMessage', {
+            const sendRes = await callTelegramApi('sendMessage', {
               chat_id: chatId,
               text: welcomeMessage,
-              parse_mode: 'Markdown',
+              parse_mode: 'HTML',
               reply_markup: {
                 inline_keyboard: [
                   [
@@ -294,13 +295,15 @@ async function startBotPolling() {
                       url: `https://t.me/share/url?url=${encodeURIComponent(
                         `https://t.me/FireflyPlayBot?start=ref_${msg.from?.id || ''}`
                       )}&text=${encodeURIComponent(
-                        'Join Firefly Play! Blast enemies and earn real rewards!'
+                        'Join Firefly Play! Play games and earn real cash rewards!'
                       )}`,
                     },
                   ],
                 ],
               },
             });
+
+            console.log(`📩 Sent /start reply to chat ${chatId}:`, sendRes?.ok ? 'OK' : sendRes);
           }
         }
       }
